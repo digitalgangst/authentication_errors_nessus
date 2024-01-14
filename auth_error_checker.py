@@ -2,13 +2,12 @@ import os, glob
 import xmltodict
 import json, re
 import pandas as pd
-import argparse, shutil, zipfile
+import argparse, zipfile
 
 '''
 To do:
 1-Create and implement an separate file to store regex,plugins,etc
-2-Add "Report Name" entry in excel file/column
-3-Check for more authentication error plugins n create a regex for each one
+2-Check for more authentication error plugins n create a regex for each one
 '''
 
 # Hours spent on this game
@@ -31,9 +30,11 @@ def check_params(output_file_path, excel_output_path):
 
         if 'NessusClientData_v2' in data and 'Report' in data['NessusClientData_v2']:
             report = data['NessusClientData_v2']['Report']
+            report_name = report['@name']
 
             if 'ReportHost' in report:
 
+                report_names = []
                 ips = []
                 ports = []
                 services = []
@@ -55,6 +56,7 @@ def check_params(output_file_path, excel_output_path):
 
                         # Append data to list
                         ips.append(name)
+                        report_names.append(report_name)
                         ports.append(int(port))
                         services.append(service)
                         protocols.append(protocol)
@@ -65,6 +67,7 @@ def check_params(output_file_path, excel_output_path):
                 # DataFrame
                 df = pd.DataFrame({
                     'IP': ips,
+                    'Report Name': report_names,
                     'Port': ports,
                     'Service': services,
                     'Protocol': protocols,
@@ -132,6 +135,7 @@ def check_errors(output_file_path, excel_output_path):
 
         for entry in json_data:
             ip = entry["IP"]
+            report_name = entry.get("Report Name", "Unknown Report")
             port = entry["Port"]
             service = entry["Service"]
             protocol = entry["Protocol"]
@@ -145,6 +149,7 @@ def check_errors(output_file_path, excel_output_path):
             if plugin_id in plugins_to_check or regex_matches:
                 error_entry = {
                     'IP': ip,
+                    'Report Name': report_name,
                     'Port': port,
                     'Service': service,
                     'Plugin': plugin_name,
@@ -166,6 +171,7 @@ def check_errors(output_file_path, excel_output_path):
                                 generic_output = str(result)
                             error_entry = {
                                 'IP': ip,
+                                'Report Name': report_name,
                                 'Port': port,
                                 'Service': service,
                                 'Plugin': plugin_name,
