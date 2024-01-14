@@ -2,6 +2,7 @@ import os, glob
 import xmltodict
 import json, re
 import pandas as pd
+import argparse, shutil, zipfile
 
 '''
 To do:
@@ -13,7 +14,18 @@ To do:
 '''
 
 # Hours spent on this game
-count = 5
+count = 7
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Nessus Auth Error Checker')
+
+    parser.add_argument('--all', action='store_true', help='Process all .nessus files in the specified directory')
+    parser.add_argument('--dir', help='Path to directory containing .nessus files')
+    parser.add_argument('--recursive', action='store_true', help='Search recursively for .nessus files in subdirectories')
+    parser.add_argument('--file', help='Specify .nessus file(s), separated by commas (e.g., file1.nessus,file2.nessus)')
+    parser.add_argument('--filename', help='Specify the name for the output zip file')
+
+    return parser.parse_args()
 
 def check_params(output_file_path, excel_output_path):
     with open(output_file_path, 'r') as f:
@@ -73,27 +85,31 @@ def convert_nessus_to_json(file_path):
 
     return nessus_dict
 
-def process_directory(directory_path, excel_output_path):
+def process_directory(directory_path, excel_output_path, recursive=False):
     cumulative_df = pd.DataFrame()
 
-    for filename in os.listdir(directory_path):
-        if filename.endswith(".nessus"):
-            nessus_file_path = os.path.join(directory_path, filename)
-            json_output_path = os.path.splitext(nessus_file_path)[0] + "_output.json"
+    for root, dirs, files in os.walk(directory_path):
+        for filename in files:
+            if filename.endswith(".nessus"):
+                nessus_file_path = os.path.join(root, filename)
+                json_output_path = os.path.splitext(nessus_file_path)[0] + "_output.json"
 
-            try:
-                nessus_data = convert_nessus_to_json(nessus_file_path)
+                try:
+                    nessus_data = convert_nessus_to_json(nessus_file_path)
 
-                with open(json_output_path, 'w', encoding='utf-8') as output_file:
-                    json.dump(nessus_data, output_file, indent=2)
+                    with open(json_output_path, 'w', encoding='utf-8') as output_file:
+                        json.dump(nessus_data, output_file, indent=2)
 
-                print(f"Created JSON: {json_output_path}")
+                    print(f"Created JSON: {json_output_path}")
 
-                df = check_params(json_output_path, None)
-                cumulative_df = pd.concat([cumulative_df, df], ignore_index=True)
+                    df = check_params(json_output_path, None)
+                    cumulative_df = pd.concat([cumulative_df, df], ignore_index=True)
 
-            except Exception as e:
-                print(f"Error: {filename}: {e}")
+                except Exception as e:
+                    print(f"Error: {nessus_file_path}: {e}")
+
+        if not recursive:
+            break
 
     cumulative_df.to_excel(excel_output_path, index=False)
     print(f"Created Excel file {excel_output_path}")
@@ -101,17 +117,17 @@ def process_directory(directory_path, excel_output_path):
 def check_errors(output_file_path, excel_output_path):
     errors = []
 
-    plugins_to_check = [110385, 24786, 110723, 135860, 21745]
-
+    plugins_to_check = [110385, 24786, 110723, 135860, 21745, 104410]
     # 110385 - Target Credential Issues by Authentication Protocol - Insufficient Privilege
     # 24786 - Nessus Windows Scan Not Performed with Admin Privileges
     # 110723 - Target Credential Status by Authentication Protocol - No Credentials Provided
     # 135860 - WMI Not Available
-    # 21745 - OS Security Patch Assessment Failed (Usualy return in the message regex, but not all. Just for safe.)
+    # 21745 - OS Security Patch Assessment Failed (Usualy return in the message regex, but not all. Just for safe.)  
+    # 104410 - Target Credential Status by Authentication Protocol - Failure for Provided Credentials
 
-    # Regex for each plugin, if needed
-    regex_list = [r"(.*?credential\n.*?checks :)", r"However,([\s\S]*?)(?:\n\s*\n|$\n\n)",
-                  r"(.*)but no credentials were provided([\s\S]*)(?:$)", r".*Can't connect.*"] 
+    regex_list = [r"(.*?credential\n.*?checks :)", r"However,   ",
+                  r"(.*)but no credentials were provided([\s\S]*)(?:$)", r".*Can't connect.*",
+                  r"Nessus was unable([\s\S]*?)(?:\n\s*\n|$\n\n)"]
 
     with open(output_file_path) as f:
         json_data = json.load(f)
@@ -125,23 +141,23 @@ def check_errors(output_file_path, excel_output_path):
             plugin_name = entry["Plugin Name"]
             plugin_output = entry["Output"]
 
-            regex = re.findall(r'Message\s*:\s*([^\n-]+)(?:\\n\\n|$)', plugin_output)
-            # Outputs with 'Message' field usually are errors
-            
-            # Check if plugin_id is in plugins_to_check or matches the regex condition
-            if plugin_id in plugins_to_check or regex:
-                for result in regex:
-                    error_entry = {
-                        'IP': ip,
-                        'Port': port,
-                        'Service': service,
-                        'Plugin': plugin_name,
-                        'Message': result.strip(),
-                        'Output': plugin_output
-                    }
-                    errors.append(error_entry)
+            regex_matches = re.findall(r'Message\s*:\s*([^\n-]+)(?:\\n\\n|$)', plugin_output)
 
-                # If plugin_id is in plugins_to_check, add a separate entry
+            # Check if plugin_id is in plugins_to_check or there are regex matches
+            if plugin_id in plugins_to_check or regex_matches:
+                error_entry = {
+                    'IP': ip,
+                    'Port': port,
+                    'Service': service,
+                    'Plugin': plugin_name,
+                    'Message': "",  # Initialize the 'Message' field as an empty string
+                    'Output': plugin_output
+                }
+
+                for result in regex_matches:
+                    error_entry['Message'] += result.strip() + " "  # Append each regex match to 'Message'
+
+                # If plugin_id is in plugins_to_check, add separate entries for each regex pattern
                 if plugin_id in plugins_to_check:
                     for regex_pattern in regex_list:
                         regex_matches = re.findall(regex_pattern, plugin_output)
@@ -149,7 +165,7 @@ def check_errors(output_file_path, excel_output_path):
                             if isinstance(result, str):
                                 generic_output = result.strip()
                             else:
-                                generic_output = str(result)  # Convert to string if not yet
+                                generic_output = str(result)
                             error_entry = {
                                 'IP': ip,
                                 'Port': port,
@@ -159,6 +175,8 @@ def check_errors(output_file_path, excel_output_path):
                                 'Output': plugin_output
                             }
                             errors.append(error_entry)
+                else:
+                    errors.append(error_entry)
 
     # Create a DataFrame for errors
     errors_df = pd.DataFrame(errors)
@@ -167,35 +185,80 @@ def check_errors(output_file_path, excel_output_path):
     with pd.ExcelWriter(excel_output_path, engine='openpyxl', mode='a') as writer:
         errors_df.to_excel(writer, sheet_name='Errors', index=False, header=True)
 
-    # Assuming this function is defined somewhere
-    remove_outputs()
+def remove_outputs(directory_path='.'):
+    padrao = os.path.join(directory_path, '**', '*_output.json')
 
-def remove_outputs(): # Remove generated json outputs :)
-    padrao = os.path.join('.', '*_output.json')
-
-    arquivos = glob.glob(padrao)
+    arquivos = glob.glob(padrao, recursive=True)
 
     for arquivo in arquivos:
         try:
             os.remove(arquivo)
-            print(f"Arquivo removido: {arquivo}")
+            print(f"File removed: {arquivo}")
         except OSError as e:
-            print(f"Erro ao remover o arquivo {arquivo}: {e}")
+            print(f"Error for remove file {arquivo}: {e}")
+
+def zip_output_files(excel_output_path, json_output_path, directory_path, filename=None):
+    base_name = filename if filename else os.path.basename(os.path.normpath(directory_path))
+    zip_file_name = f"{base_name}_output.zip"
+
+    with zipfile.ZipFile(zip_file_name, 'w') as zip_file:
+        zip_file.write(excel_output_path, os.path.basename(excel_output_path))
+        zip_file.write(json_output_path, os.path.basename(json_output_path))
+
+    print(f"Output files zipped as: {zip_file_name}")
+
+def process_single_file(nessus_file_path, excel_output_path, json_output_path):
+    cumulative_df = pd.DataFrame()  # Initialize cumulative_df for each file
+
+    try:
+        nessus_data = convert_nessus_to_json(nessus_file_path)
+
+        with open(json_output_path, 'w', encoding='utf-8') as output_file:
+            json.dump(nessus_data, output_file, indent=2)
+
+        print(f"Created JSON: {json_output_path}")
+
+        df = check_params(json_output_path, None)
+        cumulative_df = pd.concat([cumulative_df, df], ignore_index=True)
+
+    except Exception as e:
+        print(f"Error: {nessus_file_path}: {e}")
+
+    cumulative_df.to_excel(excel_output_path, index=False)
+    print(f"Created Excel file {excel_output_path}")
+
     
 if __name__ == "__main__":
-    directory_path = '.'
+    args = parse_args()
+
+    directory_path = args.dir if args.dir else '.'
     excel_output_path = "output_combined.xlsx"
     json_output_path = "params.json"
 
-    process_directory(directory_path, excel_output_path)
+    if args.all:
+        process_directory(directory_path, excel_output_path, args.recursive)
+    elif args.file:
+        file_list = args.file.split(',')
+        for file_name in file_list:
+            nessus_file_path = os.path.join(directory_path, file_name.strip())
+            process_single_file(nessus_file_path, excel_output_path, json_output_path)
+    else:
+        process_directory(directory_path, excel_output_path, args.recursive)
 
-    df_excel = pd.read_excel(excel_output_path)
-    df_excel = df_excel.fillna("")
+    # Check if the output file exists before reading it
+    if os.path.exists(excel_output_path):
+        df_excel = pd.read_excel(excel_output_path)
+        df_excel = df_excel.fillna("")
 
-    records = df_excel.to_dict(orient='records')
+        records = df_excel.to_dict(orient='records')
 
-    with open(json_output_path, 'w') as json_file:
-        json.dump(records, json_file, indent=2)
+        with open(json_output_path, 'w') as json_file:
+            json.dump(records, json_file, indent=2)
 
-    print(f"JSON Created: {json_output_path}")
-    check_errors(json_output_path, excel_output_path)
+        print(f"JSON Created: {json_output_path}")
+        check_errors(json_output_path, excel_output_path)
+
+        zip_output_files(excel_output_path, json_output_path, directory_path, args.filename)
+        remove_outputs(directory_path)
+    else:
+        print(f"Error: Output file '{excel_output_path}' not found.")
