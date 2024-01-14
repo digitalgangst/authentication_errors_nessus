@@ -8,9 +8,7 @@ import argparse, shutil, zipfile
 To do:
 1-Create and implement an separate file to store regex,plugins,etc
 2-Add "Report Name" entry in excel file/column
-3-Add recursive search for .nessus files in directories
-4-Add args (?)
-5-Check for more authentication error plugins n create a regex for each one
+3-Check for more authentication error plugins n create a regex for each one
 '''
 
 # Hours spent on this game
