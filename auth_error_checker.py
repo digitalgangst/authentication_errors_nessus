@@ -118,17 +118,29 @@ def process_directory(directory_path, excel_output_path, recursive=False):
 def check_errors(output_file_path, excel_output_path):
     errors = []
 
-    plugins_to_check = [110385, 24786, 110723, 135860, 21745, 104410]
+    plugins_to_check = [11149, 26917, 35705, 35706, 10428, 102094, 102095, 117885, 110385, 24786, 110723, 135860, 21745, 104410, 117886, 150799, 50350, 110385, 24786, 110723, 135860, 21745, 104410]
+    # 11149 - HTTP login failure (preference): Provides a means for HTTP login info, but it also returns login failures when an error happens.
+    # 26917 - Nessus Cannot Access the Windows Registry: This means the target's registry was not available. This is most likely caused by the Remote Registry not set correctly either in the scan policy or on the target.
+    # 35705 - SMB Registry : Starting the Registry Service during the scan failed: Indicates failure to start remote registry access
+    # 35706 - SMB Registry : Stopping the Registry Service after the scan failed: Indicates failure to start remote registry access
+    # 10428  SEM OUTPUT - Microsoft Windows SMB Registry Not Fully Accessible Detection: Tests registry access and sets "SMB/registry_full_access" if successful.
+    # 102094 - SSH Commands Require Privilege Escalation: Reports commands that failed due to lack of privilege escalation or due to failed privilege escalation. Commands reported here may not have prevented local checks from running but may have caused the plugin associated with each command to fail to produce the expected output. This causes authentication to report as successful, but with insufficient access.
+    # 102095 - Authentication Success - Local Checks Not Available: Reports that local checks were unavailable for the identified device or operating system and includes the report of the plugin that logged the unavailability of local checks.
+    # 117885 - Target Credential Issues by Authentication Protocol - Intermittent Authentication Failure: Reports protocols with successful authentication that also had subsequent authentication failures logged for the successful credentials.
     # 110385 - Target Credential Issues by Authentication Protocol - Insufficient Privilege
     # 24786 - Nessus Windows Scan Not Performed with Admin Privileges
     # 110723 - Target Credential Status by Authentication Protocol - No Credentials Provided
     # 135860 - WMI Not Available
     # 21745 - OS Security Patch Assessment Failed (Usualy return in the message regex, but not all. Just for safe.)  
     # 104410 - Target Credential Status by Authentication Protocol - Failure for Provided Credentials
+    # 117886 - OS Security Patch Assessment Not Available: Reports that local checks were not enabled for an informational reason and lists informational reason details.
+    # 150799 - Target Access Problems by Authentication Protocol - Maximum Privilege Account Used in Scan
+    # 50350 - OS Identification Failed
 
     regex_list = [r"(.*?credential\n.*?checks :)", r"However,   ",
                   r"(.*)but no credentials were provided([\s\S]*)(?:$)", r".*Can't connect.*",
-                  r"Nessus was unable([\s\S]*?)(?:\n\s*\n|$\n\n)"]
+                  r"Nessus was unable([\s\S]*?)(?:\n\s*\n|$\n\n)", r"The following error occurred :\s*\n*\s*(.*?)$"
+                  ]
 
     with open(output_file_path) as f:
         json_data = json.load(f)
@@ -163,21 +175,24 @@ def check_errors(output_file_path, excel_output_path):
                 # If plugin_id is in plugins_to_check, add separate entries for each regex pattern
                 if plugin_id in plugins_to_check:
                     for regex_pattern in regex_list:
-                        regex_matches = re.findall(regex_pattern, plugin_output)
-                        for result in regex_matches:
-                            if isinstance(result, str):
-                                generic_output = result.strip()
-                            else:
-                                generic_output = str(result)
-                            error_entry = {
-                                'IP': ip,
-                                'Report Name': report_name,
-                                'Port': port,
-                                'Service': service,
-                                'Plugin': plugin_name,
-                                'Message': generic_output,
-                                'Output': plugin_output
-                            }
+                        regex_match = re.findall(regex_pattern, plugin_output)
+                        if regex_match:
+                            for result in regex_match:
+                                if isinstance(result, str):
+                                    generic_output = result.strip()
+                                else:
+                                    generic_output = str(result)
+                                error_entry = {
+                                    'IP': ip,
+                                    'Report Name': report_name,
+                                    'Port': port,
+                                    'Service': service,
+                                    'Plugin': plugin_name,
+                                    'Message': generic_output,
+                                    'Output': plugin_output
+                                }
+                                errors.append(error_entry)
+                        else:
                             errors.append(error_entry)
                 else:
                     errors.append(error_entry)
