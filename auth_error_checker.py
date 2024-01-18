@@ -135,7 +135,6 @@ def check_errors(output_file_path, excel_output_path):
     # 104410 - Target Credential Status by Authentication Protocol - Failure for Provided Credentials
     # 117886 - OS Security Patch Assessment Not Available: Reports that local checks were not enabled for an informational reason and lists informational reason details.
     # 150799 - Target Access Problems by Authentication Protocol - Maximum Privilege Account Used in Scan
-    # 50350 - OS Identification Failed
 
     regex_list = [r"(.*?credential\n.*?checks :)", r"However,   ",
                   r"(.*)but no credentials were provided([\s\S]*)(?:$)", r".*Can't connect.*",
