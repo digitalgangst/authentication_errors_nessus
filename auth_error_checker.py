@@ -11,7 +11,7 @@ To do:
 '''
 
 # Hours spent on this game
-count = 7
+count = 8
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Nessus Auth Error Checker')
@@ -118,7 +118,7 @@ def process_directory(directory_path, excel_output_path, recursive=False):
 def check_errors(output_file_path, excel_output_path):
     errors = []
 
-    plugins_to_check = [11149, 26917, 35705, 35706, 10428, 102094, 102095, 117885, 110385, 24786, 110723, 135860, 21745, 104410, 117886, 150799, 110385, 24786, 110723, 135860, 21745, 104410]
+    plugins_to_check = [11149, 26917, 35705, 35706, 10428, 102094, 102095, 117885, 110385, 24786, 110723, 135860, 21745, 104410, 117886, 150799, 110385, 24786, 110723, 135860, 21745, 104410, 19506]
     # 11149 - HTTP login failure (preference): Provides a means for HTTP login info, but it also returns login failures when an error happens.
     # 26917 - Nessus Cannot Access the Windows Registry: This means the target's registry was not available. This is most likely caused by the Remote Registry not set correctly either in the scan policy or on the target.
     # 35705 - SMB Registry : Starting the Registry Service during the scan failed: Indicates failure to start remote registry access
@@ -136,7 +136,7 @@ def check_errors(output_file_path, excel_output_path):
     # 117886 - OS Security Patch Assessment Not Available: Reports that local checks were not enabled for an informational reason and lists informational reason details.
     # 150799 - Target Access Problems by Authentication Protocol - Maximum Privilege Account Used in Scan
 
-    regex_list = [r"(.*?credential\n.*?checks :)", r"However,   ",
+    regex_list = [r"Credentialed checks : no", r"However,   ",
                   r"(.*)but no credentials were provided([\s\S]*)(?:$)", r".*Can't connect.*",
                   r"Nessus was unable([\s\S]*?)(?:\n\s*\n|$\n\n)", r"The following error occurred :\s*\n*\s*(.*?)$"
                   ]
